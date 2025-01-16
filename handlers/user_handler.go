@@ -2,41 +2,66 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"project/database"
 	"project/models"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 )
 
 func GetUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := database.DB.Query("SELECT id, name, email FROM users")
 
+	// Record the start time
+	start := time.Now()
+
+	// Query the database
+	rows, err := database.DB.Query("SELECT id, name, email FROM users")
 	if err != nil {
 		http.Error(w, "Failed to fetch users", http.StatusInternalServerError)
 		return
 	}
-
 	defer rows.Close()
 
 	var users []models.User
 
+	// Process each row
 	for rows.Next() {
 		var user models.User
+
 		if err := rows.Scan(&user.ID, &user.Name, &user.Email); err != nil {
 			http.Error(w, "Failed to scan user", http.StatusInternalServerError)
 			return
 		}
+
 		users = append(users, user)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	// Calculate the elapsed time
+	duration := time.Since(start).String()
 
-	json.NewEncoder(w).Encode(users)
+	response := models.Response{
+		Data:        users,
+		Total:       len(users),
+		ExecuteTime: duration,
+	}
+	// Log or print the processing time (optional)
+	// You can also write it to logs or monitor it, depending on your use case
+	// fmt.Println("Processing time:", duration)
+
+	// Send the response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+
+	fmt.Println("Duration: ", duration)
+
 }
 
 func CreateUser(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
 	var user models.User
 
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
@@ -54,9 +79,24 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	duration := time.Since(start).String()
+
+	var users []models.User
+
+	users = append(users, user)
+
+	response := models.Response{
+		Data:        users,
+		Total:       1,
+		ExecuteTime: duration,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(user)
+	json.NewEncoder(w).Encode(response)
+
+	fmt.Println("Duration: ", duration)
+
 }
 
 func UpdateUser(w http.ResponseWriter, r *http.Request) {
