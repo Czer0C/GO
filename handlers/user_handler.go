@@ -12,6 +12,29 @@ import (
 	"github.com/gorilla/mux"
 )
 
+func GetUser(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	id, _ := strconv.Atoi(params["id"])
+
+	var user models.User
+
+	err := database.DB.QueryRow("SELECT id, name, email FROM users WHERE id=$1", id).Scan(&user.ID, &user.Name, &user.Email)
+	if err != nil {
+		http.Error(w, "Failed to fetch user", http.StatusInternalServerError)
+		return
+	}
+
+	users := []models.User{user}
+
+	response := models.Response{
+		Data:  users,
+		Total: 1,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
 func GetUsers(w http.ResponseWriter, r *http.Request) {
 
 	// Record the start time

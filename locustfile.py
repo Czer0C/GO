@@ -6,7 +6,8 @@ class MyUser(HttpUser):
 
     @task
     def send_request(self):
-        self.client.post("/users", {
-            "name": "blyat22",
-            "email": "cyka22"
-        })
+        self.client.get("/users")
+        # self.client.post("/users", {
+        #     "name": "blyat22",
+        #     "email": "cyka22"
+        # })
