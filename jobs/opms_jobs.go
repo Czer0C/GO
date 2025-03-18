@@ -116,9 +116,6 @@ func getEndpoints(timeStart int64, timeEnd int64, limit int) []Endpoint {
 		return nil
 	}
 
-	// Extract IDs from response
-	// var endpoints []string
-
 	var endpoints []Endpoint
 
 	for _, pi := range piFolderResponse.Data {
