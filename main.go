@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"regexp"
@@ -34,10 +35,13 @@ type FanData struct {
 }
 
 type ApiResponse struct {
-	URL              string             `json:"url"`
-	Status           string             `json:"status"`
-	Error            string             `json:"error,omitempty"`
-	AverageFanSpeeds map[string]float64 `json:"average_fan_speeds,omitempty"`
+	URL    string `json:"url"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+	// AverageFanSpeeds map[string]float64 `json:"average_fan_speeds,omitempty"`
+	FanData map[string]float64 `json:"fan_data,omitempty"`
+	POP     string             `json:"pop,omitempty"`
+	PID     int                `json:"pid,omitempty"`
 }
 
 var MOCK_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEzNTIsInVzZXJOYW1lIjoidHJpZXVuaDdAZnB0LmNvbS52biIsImZ1bGxOYW1lIjoidHJpZXVuaDdAZnB0LmNvbS52biIsImVtYWlsIjoidHJpZXVuaDdAZnB0LmNvbSIsImFsbG93X2FjY2VzcyI6MSwicGVybWlzc2lvbnMiOlt7InJlc291cmNlTmFtZSI6InBhZ2VfcG9wIiwiYWN0aW9uTmFtZSI6ImNyZWF0ZSJ9LHsicmVzb3VyY2VOYW1lIjoicGFnZV9wb3AiLCJhY3Rpb25OYW1lIjoiZGVsZXRlIn0seyJyZXNvdXJjZU5hbWUiOiJwYWdlX3BvcCIsImFjdGlvbk5hbWUiOiJlZGl0In0seyJyZXNvdXJjZU5hbWUiOiJtZW51X3NldHRpbmciLCJhY3Rpb25OYW1lIjoidmlldyJ9LHsicmVzb3VyY2VOYW1lIjoicGFnZV9zZXR0aW5nX3N5c3RlbV91c2VycyIsImFjdGlvbk5hbWUiOiJ2aWV3In0seyJyZXNvdXJjZU5hbWUiOiJwYWdlX3NldHRpbmdfc3lzdGVtX3Jlc291cmNlcyIsImFjdGlvbk5hbWUiOiJ2aWV3In0seyJyZXNvdXJjZU5hbWUiOiJwYWdlX3NldHRpbmdfc3lzdGVtX3JvbGVzIiwiYWN0aW9uTmFtZSI6InZpZXcifSx7InJlc291cmNlTmFtZSI6InBhZ2Vfc2V0dGluZ19zeXN0ZW1fcm9sZXMiLCJhY3Rpb25OYW1lIjoiY3JlYXRlIn0seyJyZXNvdXJjZU5hbWUiOiJwYWdlX3NldHRpbmdfc3lzdGVtX3VzZXJzIiwiYWN0aW9uTmFtZSI6ImNyZWF0ZSJ9LHsicmVzb3VyY2VOYW1lIjoicGFnZV9zZXR0aW5nX3N5c3RlbV91c2VycyIsImFjdGlvbk5hbWUiOiJlZGl0In0seyJyZXNvdXJjZU5hbWUiOiJwYWdlX3NldHRpbmdfc3lzdGVtX3VzZXJzIiwiYWN0aW9uTmFtZSI6ImRlbGV0ZSJ9LHsicmVzb3VyY2VOYW1lIjoicGFnZV9zZXR0aW5nX3N5c3RlbV9yb2xlcyIsImFjdGlvbk5hbWUiOiJkZWxldGUifSx7InJlc291cmNlTmFtZSI6InBhZ2Vfc2V0dGluZ19zeXN0ZW1fcmVzb3VyY2VzIiwiYWN0aW9uTmFtZSI6ImRlbGV0ZSJ9LHsicmVzb3VyY2VOYW1lIjoicGFnZV9zZXR0aW5nX3N5c3RlbV9yZXNvdXJjZXMiLCJhY3Rpb25OYW1lIjoiY3JlYXRlIn0seyJyZXNvdXJjZU5hbWUiOiJwYWdlX3NldHRpbmdfc3lzdGVtX3Jlc291cmNlcyIsImFjdGlvbk5hbWUiOiJlZGl0In0seyJyZXNvdXJjZU5hbWUiOiJwYWdlX3NldHRpbmdfc3lzdGVtX3JvbGVzIiwiYWN0aW9uTmFtZSI6ImVkaXQifSx7InJlc291cmNlTmFtZSI6InBhZ2VfcG9wIiwiYWN0aW9uTmFtZSI6ImFkbWluIn0seyJyZXNvdXJjZU5hbWUiOiJwYWdlX3BvcCIsImFjdGlvbk5hbWUiOiJ2aWV3In0seyJyZXNvdXJjZU5hbWUiOiJwYWdlX3NldHRpbmdfc3lzdGVtX3ZlcnNpb25zIiwiYWN0aW9uTmFtZSI6ImFkbWluIn1dLCJpYXQiOjE3NDIyODk2MjksImV4cCI6MTc0MjMxODQyOX0.kjLQYwj11UyU6M5oUbw4YRSm1kEBLWSAU63CJ9WvD2U"
@@ -64,27 +68,38 @@ type PiFolderResponse struct {
 	Data []Pi `json:"data"`
 }
 
+type Endpoint struct {
+	piId     int
+	endpoint string
+	pop      string
+}
+
 var T_START = 1741478400
 var T_END = 1741564800
 
-func getEndpoints(timeStart int, timeEnd int) []string {
+func getEndpoints(timeStart int, timeEnd int) []Endpoint {
 	urlGetPis := "https://smartpop.fpt.net/api/opms/pis?folderId=&isExtra="
+
 	client := &http.Client{Timeout: 20 * time.Second}
 
 	req, err := http.NewRequest("GET", urlGetPis, nil)
+
 	if err != nil {
 		fmt.Println("❌ Error creating request:", err)
 		return nil
 	}
 
 	token := getToken() // Ensure this function works correctly
+
 	req.Header.Add("x-access-token", token)
 
 	resp, err := client.Do(req)
+
 	if err != nil {
 		fmt.Println("❌ Error sending request:", err)
 		return nil
 	}
+
 	defer resp.Body.Close() // Ensure response body is closed
 
 	// Handle non-200 status codes
@@ -104,65 +119,56 @@ func getEndpoints(timeStart int, timeEnd int) []string {
 	}
 
 	// Extract IDs from response
-	var endpoints []string
+	// var endpoints []string
+
+	var endpoints []Endpoint
 
 	for _, pi := range piFolderResponse.Data {
 
 		nextEndpoint := fmt.Sprintf("https://smartpop.fpt.net/api/opms/pis/%d/log/fan-pop?tsdatesta=%d&tsdateend=%d", pi.Id, timeStart, timeEnd)
 
-		endpoints = append(endpoints, nextEndpoint)
-
+		endpoints = append(endpoints, Endpoint{piId: pi.Id, endpoint: nextEndpoint, pop: pi.Name})
 	}
 
-	// return endpoints
+	return endpoints
 
-	endpointsSlice10 := endpoints[:1]
+	// endpointsSlice10 := endpoints[:100]
 
-	return endpointsSlice10
+	// return endpointsSlice10
 
 }
 
 func getFanData(entries []map[string]any) map[string]float64 {
+	fanRps := map[string]float64{"f1": 0, "f2": 0, "f3": 0, "f4": 0}
+	countControlFan100 := map[string]int{"f1": 0, "f2": 0, "f3": 0, "f4": 0}
 
-	//get max rps_fan_pop of each fan at control_fan = 100
+	// Iterate through all fan entries
+	for _, fan := range entries {
+		for i := 0; i < 4; i++ {
+			rpsKey := fmt.Sprintf("rps_fan_pop_%d", i)
+			controlKey := fmt.Sprintf("control_fan_pop_%d", i)
+			fanKey := fmt.Sprintf("f%d", i+1)
 
-	// Map to store count of fan speeds
-	fanMaxRps := map[string]float64{
-		"rps1": 0,
-		"rps2": 0,
-		"rps3": 0,
-		"rps4": 0,
-	}
-
-	for _, entry := range entries {
-		// Get the fan control
-		controlFanPop0 := entry["control_fan_pop_0"].(int)
-		controlFanPop1 := entry["control_fan_pop_1"].(int)
-		controlFanPop2 := entry["control_fan_pop_2"].(int)
-		controlFanPop3 := entry["control_fan_pop_3"].(int)
-
-		if controlFanPop0 == 100 && fanMaxRps["rps1"] < float64(entry["rps_fan_pop_0"].(int)) {
-			fanMaxRps["rps1"] = float64(entry["rps_fan_pop_0"].(int))
-		}
-
-		if controlFanPop1 == 100 && fanMaxRps["rps2"] < float64(entry["rps_fan_pop_1"].(int)) {
-			fanMaxRps["rps2"] = float64(entry["rps_fan_pop_1"].(int))
-		}
-
-		if controlFanPop2 == 100 && fanMaxRps["rps3"] < float64(entry["rps_fan_pop_2"].(int)) {
-			fanMaxRps["rps3"] = float64(entry["rps_fan_pop_2"].(int))
-		}
-
-		if controlFanPop3 == 100 && fanMaxRps["rps4"] < float64(entry["rps_fan_pop_3"].(int)) {
-			fanMaxRps["rps4"] = float64(entry["rps_fan_pop_3"].(int))
+			// Type assertion with safety check
+			if rps, rpsOk := fan[rpsKey].(float64); rpsOk {
+				if control, controlOk := fan[controlKey].(float64); controlOk && control == 100 {
+					fanRps[fanKey] += rps
+					countControlFan100[fanKey]++
+				}
+			}
 		}
 	}
 
-	//print
+	// Compute the average, avoiding NaN issues
+	for key, count := range countControlFan100 {
+		if count > 0 {
+			fanRps[key] = math.Floor(fanRps[key] / float64(count))
+		} else {
+			fanRps[key] = 0 // Ensure default value is 0
+		}
+	}
 
-	fmt.Println(fanMaxRps)
-
-	return fanMaxRps
+	return fanRps
 }
 
 func writeCsvFile(results <-chan ApiResponse) {
@@ -184,39 +190,22 @@ func writeCsvFile(results <-chan ApiResponse) {
 	defer writer.Flush()
 
 	// Write CSV header
-	header := []string{"PI ID", "Status", "Fan", "Average Speed"}
+	header := []string{"PI ID", "POP", "Status", "Fan 1", "Fan 2", "Fan 3", "Fan 4"}
 
 	writer.Write(header)
 
-	// define regexp
-
-	re := regexp.MustCompile(`pis/(\d+)`)
-
-	// Write CSV rows
-
 	for result := range results {
+		pId := fmt.Sprintf("%d", result.PID)
 
-		// get number after pis/
-
-		// example: /pis/1363 -> 1363
-
-		matches := re.FindStringSubmatch(result.URL)
-
-		piId := matches[1]
+		// fmt.Println(result.URL)
 
 		if result.Status == "success" {
 
-			for key, value := range result.AverageFanSpeeds {
-
-				record := []string{piId, result.Status, key, fmt.Sprintf("%.2f", value)}
-
-				writer.Write(record)
-
-			}
-
+			record := []string{pId, result.POP, result.Status, fmt.Sprintf("%.2f", result.FanData["f1"]), fmt.Sprintf("%.2f", result.FanData["f2"]), fmt.Sprintf("%.2f", result.FanData["f3"]), fmt.Sprintf("%.2f", result.FanData["f4"])}
+			writer.Write(record)
 		} else {
 
-			record := []string{piId, result.Status, "", result.Error}
+			record := []string{pId, result.POP, result.Status, "", result.Error}
 
 			writer.Write(record)
 
@@ -227,8 +216,10 @@ func writeCsvFile(results <-chan ApiResponse) {
 	fmt.Println("Results have been written to fan_speeds.csv")
 }
 
-func fetchAPI(endpoint string, wg *sync.WaitGroup, results chan<- ApiResponse) {
+func fetchAPI(rawEndpoint Endpoint, wg *sync.WaitGroup, results chan<- ApiResponse) {
 	defer wg.Done()
+
+	endpoint := rawEndpoint.endpoint
 
 	client := &http.Client{Timeout: 60 * time.Second}
 
@@ -283,13 +274,17 @@ func fetchAPI(endpoint string, wg *sync.WaitGroup, results chan<- ApiResponse) {
 		return
 	}
 
-	averageFanSpeeds := getFanData(responseData.Data.Entries)
+	fanData := getFanData(responseData.Data.Entries)
+
+	fmt.Printf("%s ✅ \n", rawEndpoint.pop)
 
 	// Send results
 	results <- ApiResponse{
-		URL:              endpoint,
-		Status:           "success",
-		AverageFanSpeeds: averageFanSpeeds,
+		URL:     endpoint,
+		Status:  "success",
+		FanData: fanData,
+		POP:     rawEndpoint.pop,
+		PID:     rawEndpoint.piId,
 	}
 }
 
@@ -299,6 +294,7 @@ func getOpmsDataPipeline() {
 	fmt.Printf("Found %d Endpoints\n", len(endpoints))
 
 	var wg sync.WaitGroup
+
 	results := make(chan ApiResponse, len(endpoints))
 
 	fmt.Println("Starting API calls...")
