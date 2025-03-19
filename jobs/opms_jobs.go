@@ -75,6 +75,8 @@ const LOG_CURRENT_PATTERN = "https://smartpop.fpt.net/api/opms/pis/%d/log/device
 const LOG_TEMP_PATTERN = "https://smartpop.fpt.net/api/opms/pis/%d/log/temperature?tsdatesta=%d&tsdateend=%d"
 const LOG_AC_PATTERN = "https://smartpop.fpt.net/api/opms/pis/%d/log/air-cond?tsdatesta=%d&tsdateend=%d"
 
+const DELTA_TIME = int64(8 * 3600) // 8 hours in seconds
+
 func getEndpoints(timeStart int64, timeEnd int64, limit int, mode string) []Endpoint {
 
 	urlGetPis := "https://smartpop.fpt.net/api/opms/pis?folderId=&isExtra="
@@ -256,6 +258,11 @@ func processData(entries []map[string]any, mode string) map[string]float64 {
 				}
 			}
 
+			fanAcs["acDurationOnByControl"] = math.Floor(fanAcs["acDurationOnByControl"] / 60)
+			fanAcs["acDurationOffByControl"] = math.Floor(fanAcs["acDurationOffByControl"] / 60)
+			fanAcs["acDurationOnByCurrent"] = math.Floor(fanAcs["acDurationOnByCurrent"] / 60)
+			fanAcs["acDurationOffByCurrent"] = math.Floor(fanAcs["acDurationOffByCurrent"] / 60)
+
 			return fanAcs
 
 		}
@@ -268,7 +275,7 @@ func processData(entries []map[string]any, mode string) map[string]float64 {
 
 }
 
-func writeCsvFile(results <-chan ApiResponse, outputFile string, mode string) {
+func writeCsvFile(results []ApiResponse, outputFile string, mode string) {
 	file, err := os.Create(outputFile)
 	if err != nil {
 		fmt.Println("Error creating CSV file:", err)
@@ -306,7 +313,7 @@ func writeCsvFile(results <-chan ApiResponse, outputFile string, mode string) {
 
 	writer.Write(header)
 
-	for result := range results {
+	for _, result := range results {
 		pId := fmt.Sprintf("%d", result.PID)
 
 		if result.Status == "success" {
@@ -493,5 +500,152 @@ func GetOpmsDataPipeline(limit int, startTime int64, endTime int64, rateLimit in
 
 	close(results)
 
-	writeCsvFile(results, outputFile, mode)
+	fResults := []ApiResponse{}
+
+	for result := range results {
+		fResults = append(fResults, result)
+	}
+
+	writeCsvFile(fResults, outputFile, mode)
+}
+
+func GetSingleOpmsFromLongRangee(
+	startTime int64,
+	endTime int64,
+	piId int,
+	mode string,
+	rateLimit int,
+	delaySeconds int,
+) {
+	pattern := ""
+
+	switch mode {
+	case "FAN":
+		pattern = LOG_FAN_PATTERN
+	case "CURRENT":
+		pattern = LOG_CURRENT_PATTERN
+	case "TEMP":
+		pattern = LOG_TEMP_PATTERN
+	case "AC":
+		pattern = LOG_AC_PATTERN
+	default:
+		fmt.Println("Invalid mode")
+		return
+	}
+
+	intervals := splitTimeRange(startTime, endTime, DELTA_TIME)
+
+	endpoints := []Endpoint{}
+
+	for _, interval := range intervals {
+		url := fmt.Sprintf(pattern, piId, interval[0], interval[1])
+
+		endpoints = append(endpoints, Endpoint{piId: piId, endpoint: url, pop: "SINGLE_POP"})
+	}
+
+	dateStart := time.Unix(startTime, 0).Format("2006-01-02 15:04:05")
+	dateEnd := time.Unix(endTime, 0).Format("2006-01-02 15:04:05")
+
+	fmt.Printf("📆 %s to %s\n⚡ Fetching %d APIs for %d ⌛", dateStart, dateEnd, len(endpoints), piId)
+
+	// fetch api
+
+	var wg sync.WaitGroup
+	results := make(chan ApiResponse, len(endpoints))
+
+	fmt.Println("Starting API calls...")
+
+	var countBatch int
+
+	for i, endpoint := range endpoints {
+		wg.Add(1)
+		go fetchAPI(endpoint, &wg, results, len(endpoints), mode)
+
+		// Introduce a delay based on the rate limit
+		if (i+1)%rateLimit == 0 {
+			countBatch += rateLimit
+
+			fmt.Printf("\nProcessing %d/%d ⚡ Rate limit reached, cooling down for %d seconds...\n", countBatch, len(endpoints), delaySeconds)
+
+			time.Sleep(time.Duration(delaySeconds) * time.Second)
+		}
+	}
+
+	wg.Wait()
+
+	close(results)
+
+	fileName := fmt.Sprintf("opms_%d_%s.csv", piId, mode)
+
+	fmt.Printf("Results have been written to %s\n", fileName)
+
+	mergedData := map[string]float64{}
+
+	fmt.Println(len(results))
+
+	// TODO: handle get min/max for mode = TEMP
+	for result := range results {
+		for key, value := range result.ProcessedData {
+			if _, ok := mergedData[key]; !ok {
+				mergedData[key] = 0
+			}
+			mergedData[key] += value
+		}
+	}
+
+	fmt.Println(len(results))
+
+	switch mode {
+	case "FAN":
+		{
+			for key, value := range mergedData {
+				mergedData[key] = math.Floor(value / float64(len(intervals)))
+			}
+		}
+	case "TEMP":
+		{
+			// t1Max := mergedData["t1Max"]
+			// t2Max := mergedData["t2Max"]
+			// t3Max := mergedData["t3Max"]
+			// t4Max := mergedData["t4Max"]
+
+		}
+	case "AC":
+		{
+
+		}
+	default:
+		{
+			fmt.Println("Invalid mode")
+		}
+	}
+
+	resultSingle := []ApiResponse{
+		{
+			URL:           "Single",
+			Status:        "success",
+			ProcessedData: mergedData,
+			POP:           "SINGLE_POP",
+			PID:           piId,
+		},
+	}
+
+	writeCsvFile(resultSingle, fileName, mode)
+
+}
+
+func splitTimeRange(startTime, endTime int64, delta int64) [][2]int64 {
+	var intervals [][2]int64
+
+	for start := startTime; start < endTime; start += delta {
+		subEnd := start + delta
+
+		if subEnd > endTime {
+			subEnd = endTime
+		}
+
+		intervals = append(intervals, [2]int64{start, subEnd})
+	}
+
+	return intervals
 }
