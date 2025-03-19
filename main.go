@@ -7,11 +7,11 @@ import (
 
 func main() {
 
-	limit := -1
-	t1 := utils.ISOToUnix("2025-03-17T00:00:00Z")
+	limit := 5
+	t1 := utils.ISOToUnix("2025-03-18T00:00:00Z")
 	t2 := utils.ISOToUnix("2025-03-18T23:59:59Z")
-	rateLimit := 25
-	delaySeconds := 60
+	rateLimit := 1
+	delaySeconds := 2
 
 	jobs.GetOpmsDataPipeline(
 		limit,
@@ -19,7 +19,8 @@ func main() {
 		t2,
 		rateLimit,
 		delaySeconds,
-		"custom_fan_data.csv",
+		"opms_fan_data.csv",
+		"AC",
 	)
 
 }

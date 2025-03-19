@@ -36,13 +36,12 @@ type FanData struct {
 }
 
 type ApiResponse struct {
-	URL    string `json:"url"`
-	Status string `json:"status"`
-	Error  string `json:"error,omitempty"`
-	// AverageFanSpeeds map[string]float64 `json:"average_fan_speeds,omitempty"`
-	FanData map[string]float64 `json:"fan_data,omitempty"`
-	POP     string             `json:"pop,omitempty"`
-	PID     int                `json:"pid,omitempty"`
+	URL           string             `json:"url"`
+	Status        string             `json:"status"`
+	Error         string             `json:"error,omitempty"`
+	ProcessedData map[string]float64 `json:"processedData,omitempty"`
+	POP           string             `json:"pop,omitempty"`
+	PID           int                `json:"pid,omitempty"`
 }
 
 type Pi struct {
@@ -69,12 +68,14 @@ type Endpoint struct {
 	pop      string
 }
 
-var T_START = 1741478400
-var T_END = 1741564800
-
 var countProcessed = 0
 
-func getEndpoints(timeStart int64, timeEnd int64, limit int) []Endpoint {
+const LOG_FAN_PATTERN = "https://smartpop.fpt.net/api/opms/pis/%d/log/fan-pop?tsdatesta=%d&tsdateend=%d"
+const LOG_CURRENT_PATTERN = "https://smartpop.fpt.net/api/opms/pis/%d/log/device/7?lineid=7&regIds=0&tsdatesta=%d&tsdateend=%d"
+const LOG_TEMP_PATTERN = "https://smartpop.fpt.net/api/opms/pis/%d/log/temperature?tsdatesta=%d&tsdateend=%d"
+const LOG_AC_PATTERN = "https://smartpop.fpt.net/api/opms/pis/%d/log/air-cond?tsdatesta=%d&tsdateend=%d"
+
+func getEndpoints(timeStart int64, timeEnd int64, limit int, mode string) []Endpoint {
 
 	urlGetPis := "https://smartpop.fpt.net/api/opms/pis?folderId=&isExtra="
 
@@ -120,7 +121,23 @@ func getEndpoints(timeStart int64, timeEnd int64, limit int) []Endpoint {
 
 	for _, pi := range piFolderResponse.Data {
 
-		nextEndpoint := fmt.Sprintf("https://smartpop.fpt.net/api/opms/pis/%d/log/fan-pop?tsdatesta=%d&tsdateend=%d", pi.Id, timeStart, timeEnd)
+		var pattern string
+
+		switch mode {
+		case "FAN":
+			pattern = LOG_FAN_PATTERN
+		case "CURRENT":
+			pattern = LOG_CURRENT_PATTERN
+		case "TEMP":
+			pattern = LOG_TEMP_PATTERN
+		case "AC":
+			pattern = LOG_AC_PATTERN
+		default:
+			fmt.Println("Invalid mode")
+			return nil
+		}
+
+		nextEndpoint := fmt.Sprintf(pattern, pi.Id, timeStart, timeEnd)
 
 		endpoints = append(endpoints, Endpoint{piId: pi.Id, endpoint: nextEndpoint, pop: pi.Name})
 	}
@@ -135,40 +152,123 @@ func getEndpoints(timeStart int64, timeEnd int64, limit int) []Endpoint {
 
 }
 
-func getFanData(entries []map[string]any) map[string]float64 {
-	fanRps := map[string]float64{"f1": 0, "f2": 0, "f3": 0, "f4": 0}
-	countControlFan100 := map[string]int{"f1": 0, "f2": 0, "f3": 0, "f4": 0}
+func processData(entries []map[string]any, mode string) map[string]float64 {
 
-	// Iterate through all fan entries
-	for _, fan := range entries {
-		for i := 0; i < 4; i++ {
-			rpsKey := fmt.Sprintf("rps_fan_pop_%d", i)
-			controlKey := fmt.Sprintf("control_fan_pop_%d", i)
-			fanKey := fmt.Sprintf("f%d", i+1)
+	switch mode {
+	case "FAN":
+		{
+			fanRps := map[string]float64{"f1": 0, "f2": 0, "f3": 0, "f4": 0}
+			countControlFan100 := map[string]int{"f1": 0, "f2": 0, "f3": 0, "f4": 0}
 
-			// Type assertion with safety check
-			if rps, rpsOk := fan[rpsKey].(float64); rpsOk {
-				if control, controlOk := fan[controlKey].(float64); controlOk && control == 100 {
-					fanRps[fanKey] += rps
-					countControlFan100[fanKey]++
+			// Iterate through all fan entries
+			for _, fan := range entries {
+				for i := 0; i < 4; i++ {
+					rpsKey := fmt.Sprintf("rps_fan_pop_%d", i)
+					controlKey := fmt.Sprintf("control_fan_pop_%d", i)
+					fanKey := fmt.Sprintf("f%d", i+1)
+
+					// Type assertion with safety check
+					if rps, rpsOk := fan[rpsKey].(float64); rpsOk {
+						if control, controlOk := fan[controlKey].(float64); controlOk && control == 100 {
+							fanRps[fanKey] += rps
+							countControlFan100[fanKey]++
+						}
+					}
 				}
 			}
+
+			// Compute the average, avoiding NaN issues
+			for key, count := range countControlFan100 {
+				if count > 0 {
+					fanRps[key] = math.Floor(fanRps[key] / float64(count))
+				} else {
+					fanRps[key] = 0 // Ensure default value is 0
+				}
+			}
+
+			return fanRps
+
+		}
+	case "CURRENT":
+		{
+			fmt.Println("To be implemented")
+
+			return nil
+		}
+	case "TEMP":
+		{
+			fanTemps := map[string]float64{"t1Max": -1, "t2Max": -1, "t3Max": -1, "t4Max": -1, "t1Min": 999, "t2Min": 999, "t3Min": 999, "t4Min": 999}
+
+			for _, fan := range entries {
+				for i := 0; i < 4; i++ {
+					tempKey := fmt.Sprintf("temperature_%d", i)
+					fanKey := fmt.Sprintf("t%d", i+1)
+
+					// Type assertion with safety check
+					if temp, tempOk := fan[tempKey].(float64); tempOk {
+						if temp > fanTemps[fmt.Sprintf("%sMax", fanKey)] {
+							fanTemps[fmt.Sprintf("%sMax", fanKey)] = temp
+						}
+
+						if temp < fanTemps[fmt.Sprintf("%sMin", fanKey)] {
+							fanTemps[fmt.Sprintf("%sMin", fanKey)] = temp
+						}
+					}
+				}
+			}
+
+			return fanTemps
+		}
+	case "AC":
+		{
+			fanAcs := map[string]float64{"acDurationOnByControl": 0, "acDurationOffByControl": 0, "acDurationOnByCurrent": 0, "acDurationOffByCurrent": 0}
+
+			var avgCurrent float64
+
+			for _, fan := range entries {
+				if currentAc, currentAcOk := fan["current_ac"].(float64); currentAcOk {
+					avgCurrent += currentAc
+				}
+			}
+
+			avgCurrent = avgCurrent / float64(len(entries))
+
+			for i := 1; i < len(entries); i++ {
+				prev := entries[i-1]
+				next := entries[i]
+
+				if prevControlAc, prevControlAcOk := prev["control_ac"].(float64); prevControlAcOk {
+					if _, nextControlAcOk := next["control_ac"].(float64); nextControlAcOk {
+						if prevControlAc == 1 {
+							fanAcs["acDurationOnByControl"] += next["timestamp"].(float64) - prev["timestamp"].(float64)
+						} else {
+							fanAcs["acDurationOffByControl"] += next["timestamp"].(float64) - prev["timestamp"].(float64)
+						}
+					}
+
+					if prevCurrentAc, prevCurrentAcOk := prev["current_ac"].(float64); prevCurrentAcOk {
+						if prevCurrentAc < avgCurrent {
+							fanAcs["acDurationOnByCurrent"] += next["timestamp"].(float64) - prev["timestamp"].(float64)
+						} else {
+							fanAcs["acDurationOffByCurrent"] += next["timestamp"].(float64) - prev["timestamp"].(float64)
+						}
+					}
+				}
+			}
+
+			return fanAcs
+
+		}
+	default:
+		{
+			fmt.Println("Invalid mode")
+			return nil
 		}
 	}
 
-	// Compute the average, avoiding NaN issues
-	for key, count := range countControlFan100 {
-		if count > 0 {
-			fanRps[key] = math.Floor(fanRps[key] / float64(count))
-		} else {
-			fanRps[key] = 0 // Ensure default value is 0
-		}
-	}
-
-	return fanRps
 }
 
-func writeCsvFile(results <-chan ApiResponse, outputFile string) {
+func writeCsvFile(results <-chan ApiResponse, outputFile string, mode string) {
 	file, err := os.Create(outputFile)
 	if err != nil {
 		fmt.Println("Error creating CSV file:", err)
@@ -179,7 +279,31 @@ func writeCsvFile(results <-chan ApiResponse, outputFile string) {
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	header := []string{"PI ID", "POP", "Status", "Fan 1", "Fan 2", "Fan 3", "Fan 4"}
+	header := []string{"PI ID", "POP", "Status"}
+
+	switch mode {
+	case "FAN":
+		{
+			header = append(header, "F1", "F2", "F3", "F4")
+		}
+	case "CURRENT":
+		{
+			fmt.Println("To be implemented")
+		}
+	case "TEMP":
+		{
+			header = append(header, "T1 Max", "T2 Max", "T3 Max", "T4 Max", "T1 Min", "T2 Min", "T3 Min", "T4 Min")
+		}
+	case "AC":
+		{
+			header = append(header, "AC Duration On By Control", "AC Duration Off By Control", "AC Duration On By Current", "AC Duration Off By Current")
+		}
+	default:
+		{
+			fmt.Println("Invalid mode")
+		}
+	}
+
 	writer.Write(header)
 
 	for result := range results {
@@ -188,10 +312,48 @@ func writeCsvFile(results <-chan ApiResponse, outputFile string) {
 		if result.Status == "success" {
 			record := []string{
 				pId, result.POP, result.Status,
-				fmt.Sprintf("%.2f", result.FanData["f1"]),
-				fmt.Sprintf("%.2f", result.FanData["f2"]),
-				fmt.Sprintf("%.2f", result.FanData["f3"]),
-				fmt.Sprintf("%.2f", result.FanData["f4"]),
+			}
+
+			switch mode {
+			case "FAN":
+				{
+					record = append(record,
+						fmt.Sprintf("%.2f", result.ProcessedData["f1"]),
+						fmt.Sprintf("%.2f", result.ProcessedData["f2"]),
+						fmt.Sprintf("%.2f", result.ProcessedData["f3"]),
+						fmt.Sprintf("%.2f", result.ProcessedData["f4"]),
+					)
+				}
+			case "CURRENT":
+				{
+					fmt.Println("To be implemented")
+				}
+			case "TEMP":
+				{
+					record = append(record,
+						fmt.Sprintf("%.2f", result.ProcessedData["t1Max"]),
+						fmt.Sprintf("%.2f", result.ProcessedData["t2Max"]),
+						fmt.Sprintf("%.2f", result.ProcessedData["t3Max"]),
+						fmt.Sprintf("%.2f", result.ProcessedData["t4Max"]),
+						fmt.Sprintf("%.2f", result.ProcessedData["t1Min"]),
+						fmt.Sprintf("%.2f", result.ProcessedData["t2Min"]),
+						fmt.Sprintf("%.2f", result.ProcessedData["t3Min"]),
+						fmt.Sprintf("%.2f", result.ProcessedData["t4Min"]),
+					)
+				}
+			case "AC":
+				{
+					record = append(record,
+						fmt.Sprintf("%.2f", result.ProcessedData["acDurationOnByControl"]),
+						fmt.Sprintf("%.2f", result.ProcessedData["acDurationOffByControl"]),
+						fmt.Sprintf("%.2f", result.ProcessedData["acDurationOnByCurrent"]),
+						fmt.Sprintf("%.2f", result.ProcessedData["acDurationOffByCurrent"]),
+					)
+				}
+			default:
+				{
+					fmt.Println("Invalid mode")
+				}
 			}
 			writer.Write(record)
 		} else {
@@ -220,7 +382,7 @@ func showSpinner(done chan bool, pop string, total int) {
 	}
 }
 
-func fetchAPI(rawEndpoint Endpoint, wg *sync.WaitGroup, results chan<- ApiResponse, total int) {
+func fetchAPI(rawEndpoint Endpoint, wg *sync.WaitGroup, results chan<- ApiResponse, total int, mode string) {
 	defer wg.Done()
 
 	endpoint := rawEndpoint.endpoint
@@ -282,7 +444,7 @@ func fetchAPI(rawEndpoint Endpoint, wg *sync.WaitGroup, results chan<- ApiRespon
 		return
 	}
 
-	fanData := getFanData(responseData.Data.Entries)
+	processedData := processData(responseData.Data.Entries, mode)
 
 	countProcessed++
 
@@ -290,22 +452,19 @@ func fetchAPI(rawEndpoint Endpoint, wg *sync.WaitGroup, results chan<- ApiRespon
 
 	// Send results
 	results <- ApiResponse{
-		URL:     endpoint,
-		Status:  "success",
-		FanData: fanData,
-		POP:     rawEndpoint.pop[:7],
-		PID:     rawEndpoint.piId,
+		URL:           endpoint,
+		Status:        "success",
+		ProcessedData: processedData,
+		POP:           rawEndpoint.pop[:7],
+		PID:           rawEndpoint.piId,
 	}
 }
 
-func GetOpmsDataPipeline(limit int,
-	startTime int64,
-	endTime int64,
-	rateLimit int,
-	delaySeconds int,
-	outputFile string) {
+func GetOpmsDataPipeline(limit int, startTime int64, endTime int64, rateLimit int, delaySeconds int, outputFile string, mode string) {
 
-	endpoints := getEndpoints(startTime, endTime, limit)
+	endpoints := getEndpoints(startTime, endTime, limit, mode)
+
+	// fmt.Println(endpoints[0])
 
 	fmt.Printf("Found %d Endpoints\n", len(endpoints))
 
@@ -318,7 +477,7 @@ func GetOpmsDataPipeline(limit int,
 
 	for i, endpoint := range endpoints {
 		wg.Add(1)
-		go fetchAPI(endpoint, &wg, results, len(endpoints))
+		go fetchAPI(endpoint, &wg, results, len(endpoints), mode)
 
 		// Introduce a delay based on the rate limit
 		if (i+1)%rateLimit == 0 {
@@ -334,5 +493,5 @@ func GetOpmsDataPipeline(limit int,
 
 	close(results)
 
-	writeCsvFile(results, outputFile)
+	writeCsvFile(results, outputFile, mode)
 }
