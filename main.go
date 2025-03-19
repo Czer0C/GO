@@ -7,7 +7,7 @@ import (
 
 func main() {
 
-	t1 := utils.ISOToUnix("2025-03-01T00:00:00Z")
+	t1 := utils.ISOToUnix("2025-03-18T00:00:00Z")
 	t2 := utils.ISOToUnix("2025-03-18T23:59:59Z")
 
 	// limit := 5
