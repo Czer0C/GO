@@ -19,20 +19,8 @@ type Response struct {
 }
 
 type DataWrapper struct {
-	Data    []FanData `json:"data"`
-	Success bool      `json:"success"`
-}
-
-type FanData struct {
-	Timestamp      int `json:"timestamp"`
-	ControlFanPop0 int `json:"control_fan_pop_0"`
-	ControlFanPop1 int `json:"control_fan_pop_1"`
-	ControlFanPop2 int `json:"control_fan_pop_2"`
-	ControlFanPop3 int `json:"control_fan_pop_3"`
-	RpsFanPop0     int `json:"rps_fan_pop_0"`
-	RpsFanPop1     int `json:"rps_fan_pop_1"`
-	RpsFanPop2     int `json:"rps_fan_pop_2"`
-	RpsFanPop3     int `json:"rps_fan_pop_3"`
+	Data    []any `json:"data"`
+	Success bool  `json:"success"`
 }
 
 type ApiResponse struct {

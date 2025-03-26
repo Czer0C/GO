@@ -15,7 +15,7 @@ func main() {
 	delaySeconds := 10
 
 	jobs.GetSingleOpmsFromLongRangee(
-		t1, t2, 832, "AC",
+		t1, t2, 832, "FAN",
 		rateLimit, delaySeconds,
 	)
 
