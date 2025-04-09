@@ -7,17 +7,17 @@ import (
 
 func main() {
 
-	t1 := utils.ISOToUnix("2025-03-18T00:00:00Z")
-	t2 := utils.ISOToUnix("2025-03-18T23:59:59Z")
+	t1 := utils.ISOToUnix("2025-04-08T00:00:00Z")
+	t2 := utils.ISOToUnix("2025-04-08T22:59:59Z")
 
-	// limit := 5
-	rateLimit := 10
-	delaySeconds := 10
+	limit := -1
+	rateLimit := 50
+	delaySeconds := 25
 
-	jobs.GetSingleOpmsFromLongRangee(
-		t1, t2, 832, "FAN",
-		rateLimit, delaySeconds,
-	)
+	// jobs.GetSingleOpmsFromLongRangee(
+	// 	t1, t2, 832, "FAN",
+	// 	rateLimit, delaySeconds,
+	// )
 
 	// jobs.GetOpmsDataPipeline(
 	// 	limit,
@@ -25,9 +25,19 @@ func main() {
 	// 	t2,
 	// 	rateLimit,
 	// 	delaySeconds,
-	// 	"opms_fan_data.csv",
-	// 	"AC",
+	// 	"ipms.csv",
+	// 	"TEMP",
 	// )
+
+	jobs.GetIpmsDataPipeline(
+		limit,
+		t1,
+		t2,
+		rateLimit,
+		delaySeconds,
+		"ipms.csv",
+		"TEMP",
+	)
 
 }
 

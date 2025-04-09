@@ -1,6 +1,8 @@
 module project
 
-go 1.20
+go 1.23.0
+
+toolchain go1.23.8
 
 require (
 	github.com/gorilla/mux v1.8.1
@@ -16,4 +18,5 @@ require (
 	github.com/mattn/go-isatty v0.0.17 // indirect
 	golang.org/x/sys v0.6.0 // indirect
 	golang.org/x/term v0.6.0 // indirect
+	golang.org/x/text v0.24.0 // indirect
 )
