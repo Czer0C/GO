@@ -58,16 +58,16 @@ type Endpoint struct {
 
 var countProcessed = 0
 
-const LOG_FAN_PATTERN = "https://smartpop.fpt.net/api/opms/pis/%d/log/fan-pop?tsdatesta=%d&tsdateend=%d"
-const LOG_CURRENT_PATTERN = "https://smartpop.fpt.net/api/opms/pis/%d/log/device/7?lineid=7&regIds=0&tsdatesta=%d&tsdateend=%d"
-const LOG_TEMP_PATTERN = "https://smartpop.fpt.net/api/opms/pis/%d/log/temperature?tsdatesta=%d&tsdateend=%d"
-const LOG_AC_PATTERN = "https://smartpop.fpt.net/api/opms/pis/%d/log/air-cond?tsdatesta=%d&tsdateend=%d"
+const LOG_FAN_PATTERN = "/api/opms/pis/%d/log/fan-pop?tsdatesta=%d&tsdateend=%d"
+const LOG_CURRENT_PATTERN = "/api/opms/pis/%d/log/device/7?lineid=7&regIds=0&tsdatesta=%d&tsdateend=%d"
+const LOG_TEMP_PATTERN = "/api/opms/pis/%d/log/temperature?tsdatesta=%d&tsdateend=%d"
+const LOG_AC_PATTERN = "/api/opms/pis/%d/log/air-cond?tsdatesta=%d&tsdateend=%d"
 
 const DELTA_TIME = int64(8 * 3600) // 8 hours in seconds
 
 func getEndpoints(timeStart int64, timeEnd int64, limit int, mode string) []Endpoint {
 
-	urlGetPis := "https://smartpop.fpt.net/api/opms/pis?folderId=&isExtra="
+	urlGetPis := "/api/opms/pis?folderId=&isExtra="
 
 	client := &http.Client{Timeout: 20 * time.Second}
 

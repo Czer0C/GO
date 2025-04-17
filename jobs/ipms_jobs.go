@@ -17,14 +17,14 @@ import (
 	"golang.org/x/text/encoding/unicode"
 )
 
-const IPMS_LOG_FAN_PATTERN = "https://smartpop.fpt.net/api/pis/%d/log/fan-pop?tsdatesta=%d&tsdateend=%d"
-const IPMS_LOG_CURRENT_PATTERN = "https://smartpop.fpt.net/api/pis/%d/log/device/7?lineid=7&regIds=0&tsdatesta=%d&tsdateend=%d"
-const IPMS_LOG_TEMP_PATTERN = "https://smartpop.fpt.net/api/pis/%d/log/type?type=sensor&tsdatesta=%d&tsdateend=%d"
-const IPMS_LOG_AC_PATTERN = "https://smartpop.fpt.net/api/pis/%d/log/sensorrelayused?tsdatesta=%d&tsdateend=%d"
+const IPMS_LOG_FAN_PATTERN = "api/pis/%d/log/fan-pop?tsdatesta=%d&tsdateend=%d"
+const IPMS_LOG_CURRENT_PATTERN = "api/pis/%d/log/device/7?lineid=7&regIds=0&tsdatesta=%d&tsdateend=%d"
+const IPMS_LOG_TEMP_PATTERN = "api/pis/%d/log/type?type=sensor&tsdatesta=%d&tsdateend=%d"
+const IPMS_LOG_AC_PATTERN = "api/pis/%d/log/sensorrelayused?tsdatesta=%d&tsdateend=%d"
 
 func getEndpointsIpms(timeStart int64, timeEnd int64, limit int, mode string) []Endpoint {
 
-	urlGetPis := "https://smartpop.fpt.net/api/pis?folderId=&isExtra="
+	urlGetPis := "api/pis?folderId=&isExtra="
 
 	client := &http.Client{Timeout: 20 * time.Second}
 
